@@ -1,0 +1,31 @@
+{
+    "folders": [
+      {
+        "name": "controller",
+        "path": "controller"
+      },
+      {
+        "name": "src_common",
+        "path": "src_common"
+      }
+    ],
+    "settings": {
+      "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+      "files.exclude": {
+        "**/.pio": true,
+        "**/.vscode": false
+      },
+      "files.associations": {
+        "fstream": "cpp",
+        "array": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "vector": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp"
+      }
+    }
+  }

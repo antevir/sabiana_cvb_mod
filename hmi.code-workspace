@@ -1,0 +1,22 @@
+{
+    "folders": [
+      {
+        "name": "hmi",
+        "path": "hmi"
+      },
+      {
+        "name": "src_common",
+        "path": "src_common"
+      }
+    ],
+    "settings": {
+      "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+      "files.exclude": {
+        "**/.pio": true,
+        "**/.vscode": false
+      },
+      "files.associations": {
+        "string": "cpp"
+      }
+    }
+  }
