@@ -32,10 +32,16 @@
 #define TIME_ZONE "CET-1CEST,M3.5.0,M10.5.0/3" // Stockholm
 
 #define TEMP_UPDATE_INTERVAL_MS 10000
+#define BACKLIGHT_TMO_MS        5000
 
 static void uartCtrlDataCb(uint8_t type, float temp, uint8_t mode, uint8_t fanLevel, uint8_t setTemp);
 static void uartCtrlDataTmoCb(void);
 static void uartStartupCb(void);
+
+typedef struct {
+   bool active;
+   int lastWakeTime;
+} Backlight_t;
 
 static const uart_com_callbacks_t uartComCallbacks = {
    .startup = uartStartupCb,
@@ -57,18 +63,32 @@ WifiSetupScreen& gWifiScreen = WifiSetupScreen::getInstance();
 Settings& gSettings = Settings::getInstance();
 UartCom fanCom(Serial, &uartComCallbacks);
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
+Backlight_t backlight = { 0 };
+lv_indev_t *indev; //Touchscreen input device
+uint8_t *drawBuf;  //drawBuf is allocated on heap otherwise the static area is too big on ESP32 at compile
+uint32_t lastTick = 0;  //Used to track the tick timer
 
-/* LVGL calls it when a rendered image needs to copied to the display*/
-void my_disp_flush( lv_display_t *disp, const lv_area_t *area, uint8_t * px_map)
+
+static void backlightWake()
 {
-   /*Call it to tell LVGL you are ready*/
-   lv_disp_flush_ready(disp);
+   ledcWrite(1, 250);
+   backlight.lastWakeTime = millis();
+   backlight.active = true;
 }
 
-void my_touchpad_read( lv_indev_t * indev, lv_indev_data_t * data )
+static void handleBacklight()
 {
-   if(touchscreen.touched())
-   {
+   if (backlight.active) {
+      if (millis() - backlight.lastWakeTime > BACKLIGHT_TMO_MS) {
+         ledcWrite(1, 50);
+         backlight.active = false;
+      }
+   }
+}
+
+static void touchpadRead( lv_indev_t * indev, lv_indev_data_t * data )
+{
+   if(touchscreen.touched()) {
       TS_Point p = touchscreen.getPoint();
       //Some very basic auto calibration so it doesn't go out of range
       if(p.x < touchScreenMinimumX) touchScreenMinimumX = p.x;
@@ -79,17 +99,12 @@ void my_touchpad_read( lv_indev_t * indev, lv_indev_data_t * data )
       data->point.x = map(p.x,touchScreenMinimumX,touchScreenMaximumX,1,TFT_HOR_RES); /* Touchscreen X calibration */
       data->point.y = map(p.y,touchScreenMinimumY,touchScreenMaximumY,1,TFT_VER_RES); /* Touchscreen Y calibration */
       data->state = LV_INDEV_STATE_PRESSED;
-   }
-   else
-   {
+
+      backlightWake();
+   } else {
       data->state = LV_INDEV_STATE_RELEASED;
    }
 }
-
-lv_indev_t * indev; //Touchscreen input device
-uint8_t* draw_buf;  //draw_buf is allocated on heap otherwise the static area is too big on ESP32 at compile
-uint32_t lastTick = 0;  //Used to track the tick timer
-
 
 static void uartCtrlDataCb(uint8_t type, float temp, uint8_t mode, uint8_t fanLevel, uint8_t setTemp)
 {
@@ -164,6 +179,7 @@ void setup()
    Serial1.begin(115200);
    
    WiFi.begin(gSettings.getSsid(), gSettings.getPsk());
+   WiFi.setSleep(true);
    
    ArduinoOTA
    .onStart([]() {
@@ -217,15 +233,20 @@ void setup()
    
    //Initialise LVGL
    lv_init();
-   draw_buf = new uint8_t[DRAW_BUF_SIZE];
+   drawBuf = new uint8_t[DRAW_BUF_SIZE];
    lv_display_t * disp;
-   disp = lv_tft_espi_create(TFT_HOR_RES, TFT_VER_RES, draw_buf, DRAW_BUF_SIZE);
+   disp = lv_tft_espi_create(TFT_HOR_RES, TFT_VER_RES, drawBuf, DRAW_BUF_SIZE);
    lv_display_set_rotation(disp,LV_DISPLAY_ROTATION_90);
    
    //Initialize the XPT2046 input device driver
    indev = lv_indev_create();
    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);  
-   lv_indev_set_read_cb(indev, my_touchpad_read);
+   lv_indev_set_read_cb(indev, touchpadRead);
+
+   // Use backlight PWM
+   ledcAttachPin(TFT_BL, 1);
+   ledcSetup(1, 25000, 8); // 25 kHz, 8-bit
+   backlightWake();
 
    Wire.begin(I2C_SDA_GPIO, I2C_SCL_GPIO);
    sht3x.begin();
@@ -235,7 +256,10 @@ void setup()
    gMainScreen.show();
    
    fanCom.init();
-   
+
+   // Lower CPU speed to minimize heat dissipation
+   setCpuFrequencyMhz(80);
+
    //Done
    Serial.println( "Setup done" );
 }
@@ -272,4 +296,5 @@ void loop()
    fanCom.handleRx();
    ArduinoOTA.handle();
    gMainScreen.update();
+   handleBacklight();
 }
