@@ -3,9 +3,10 @@
 #include <ArduinoOTA.h>
 #include <esp_sntp.h>
 #include <TelnetSerialStream.h>
-#include <DS18B20.h>
 #include <XPT2046_Touchscreen.h>
 #include <TFT_eSPI.h>
+#include <Wire.h>
+#include <ArtronShop_SHT3x.h>
 
 #include "main_screen.hpp"
 #include "wifi_screen.hpp"
@@ -25,12 +26,12 @@
 /*LVGL draw into this buffer, 1/10 screen size usually works well. The size is in bytes*/
 #define DRAW_BUF_SIZE (TFT_HOR_RES * TFT_VER_RES / 10 * (LV_COLOR_DEPTH / 8))
 
+#define I2C_SDA_GPIO 27
+#define I2C_SCL_GPIO 22
 
-#define ONE_WIRE_GPIO 22
 #define TIME_ZONE "CET-1CEST,M3.5.0,M10.5.0/3" // Stockholm
 
-#define TEMP_UPDATE_INTERVAL_MS 5000
-#define TEMP_TMO_MS 3000
+#define TEMP_UPDATE_INTERVAL_MS 10000
 
 static void uartCtrlDataCb(uint8_t type, float temp, uint8_t mode, uint8_t fanLevel, uint8_t setTemp);
 static void uartCtrlDataTmoCb(void);
@@ -47,13 +48,13 @@ SPIClass touchscreenSpi = SPIClass(VSPI);
 XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 uint16_t touchScreenMinimumX = 200, touchScreenMaximumX = 3700, touchScreenMinimumY = 240,touchScreenMaximumY = 3800;
 
+ArtronShop_SHT3x sht3x(0x44, &Wire);
+
 bool gSendState = true;
 uint32_t gSettingModTimeMs = 0;
 MainScreen& gMainScreen = MainScreen::getInstance();
 WifiSetupScreen& gWifiScreen = WifiSetupScreen::getInstance();
 Settings& gSettings = Settings::getInstance();
-OneWire oneWire(ONE_WIRE_GPIO);
-DS18B20 airTempSensor(&oneWire);
 UartCom fanCom(Serial, &uartComCallbacks);
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
@@ -225,9 +226,10 @@ void setup()
    indev = lv_indev_create();
    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);  
    lv_indev_set_read_cb(indev, my_touchpad_read);
-   
-   airTempSensor.begin();
-   airTempSensor.setResolution(10);
+
+   Wire.begin(I2C_SDA_GPIO, I2C_SCL_GPIO);
+   sht3x.begin();
+
    gMainScreen.init(&gSettings, wifiPressed);
    gWifiScreen.init(&gSettings, wifiSetupDoneCb);
    gMainScreen.show();
@@ -242,35 +244,19 @@ void loop()
 {   
    static uint32_t lastTick = 0;
    static uint32_t lastTempTimeMs = 0;
-   static bool tempInProgress = false;
    static float airTemp = NAN;
    
    lv_tick_inc(millis() - lastTick);
    lastTick = millis();
    lv_timer_handler();
-   delay(5);
+   delay(10);
    
    if (millis() - lastTempTimeMs >= TEMP_UPDATE_INTERVAL_MS) {
-      Serial.println( "Request" );
-      airTempSensor.requestTemperatures();
+      sht3x.measure();
       lastTempTimeMs = millis();
-      tempInProgress = true;
-   }
-   if (tempInProgress) {
-      
-      if (airTempSensor.isConversionComplete()) {
-         tempInProgress = false;
-         airTemp = airTempSensor.getTempC();
-         Serial.println( "Complete" );
-         gMainScreen.setAirTemp(airTemp);
-         gSendState = true;
-      } else if (millis() - lastTempTimeMs >= TEMP_TMO_MS) {
-         tempInProgress = false;
-         Serial.println( "TMO" );
-         airTemp = NAN;
-         gMainScreen.setAirTemp(airTemp);
-         gSendState = true;
-      }
+      airTemp = sht3x.temperature();
+      gMainScreen.setAirTemp(airTemp);
+      gSendState = true;
    }
    if ((gSettingModTimeMs != 0) && 
        ((millis() - gSettingModTimeMs) > 10000)) {
