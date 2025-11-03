@@ -29,6 +29,8 @@
 #define I2C_SDA_GPIO 27
 #define I2C_SCL_GPIO 22
 
+#define AIR_TEMP_COMP (-0.7f)  // Heat dissipation compensating
+
 #define TIME_ZONE "CET-1CEST,M3.5.0,M10.5.0/3" // Stockholm
 
 #define TEMP_UPDATE_INTERVAL_MS 10000
@@ -278,7 +280,7 @@ void loop()
    if (millis() - lastTempTimeMs >= TEMP_UPDATE_INTERVAL_MS) {
       sht3x.measure();
       lastTempTimeMs = millis();
-      airTemp = sht3x.temperature();
+      airTemp = sht3x.temperature() + AIR_TEMP_COMP;
       gMainScreen.setAirTemp(airTemp);
       gSendState = true;
    }
