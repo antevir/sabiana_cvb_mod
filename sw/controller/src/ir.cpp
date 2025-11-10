@@ -279,7 +279,14 @@ void Ir::handle(void)
 
    // Extract fields
    uint8_t modeCode = rxData[0] >> 4;
+   uint8_t powerBit = (rxData[0] >> 3) & 0x01;  // Bit 3 of byte 0 = power (1=ON, 0=OFF)
    op_mode_t mode = fromIrMode(modeCode);
+
+   // If power bit is 0, override mode to OFF
+   if (powerBit == 0) {
+      mode = OP_MODE_OFF;
+   }
+
    uint8_t fan = rxData[1] & 0x0F;
    uint8_t temp = (rxData[2] >> 4) * 10 + (rxData[2] & 0x0F);
    uint8_t swingBits = (rxRawByte8 >> 1) & 0x3;
@@ -303,8 +310,13 @@ void Ir::sendCommand(op_mode_t mode, uint8_t fan, bool swing, uint8_t temp)
    uint8_t hexTemp = ((temp / 10) << 4) | (temp % 10);
    memcpy((void *)&txData[0], &initData[0], sizeof(txData));
    // Set mode code in upper 4 bits of byte 0
-   txData[0] = (toIrModeCode(mode) << 4);
-   // Set fan code in lower 4 bits of byte 1 (preserve upper nibble from initData if needed, but it's 0)
+   // Set power bit (bit 3) - 1=ON, 0=OFF
+   uint8_t byte0 = (toIrModeCode(mode) << 4);
+   if (mode != OP_MODE_OFF) {
+      byte0 |= 0x08;  // Set bit 3 for ON
+   }
+   txData[0] = byte0;
+   // Set fan code in lower 4 bits of byte 1
    txData[1] = fan & 0x0F;
    // Set temperature in byte 2
    txData[2] = hexTemp;
