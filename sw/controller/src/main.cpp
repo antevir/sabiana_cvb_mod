@@ -199,6 +199,7 @@ static void processHeatMode()
          heat = true;
       } else {
          leds.set(LED_STATE_GREEN_RED);
+         heat = false;
       }
    }
    if (gCtrlState.airTemp > (float)gCtrlState.setTemp + 0.5f) {
@@ -327,12 +328,12 @@ void loop() {
       if (gCtrlState.gotHwSensor) {
          // We got a hot water sensor - broadcast temp to all slaves
          if (!isnan(gCtrlState.hwTemp)) {
-            gCtrlState.gotHw = gCtrlState.hwTemp >= 300; // 30.0 C
+            gCtrlState.gotHw = gCtrlState.hwTemp >= 30.0; // 30.0 C
          } else {
             // Temp sensor error set gGotHotWater=true and let fan control as normal
             gCtrlState.gotHw = true;
          }
-         sendUdpTemp(gCtrlState.hwTemp, gCtrlState.gotHw);
+         sendUdpTemp((uint16_t)(gCtrlState.hwTemp * 10.0f), gCtrlState.gotHw);
       } else {
          // No sensor - listen to master
          checkUdpTemp();
