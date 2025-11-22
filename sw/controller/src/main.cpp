@@ -82,11 +82,25 @@ static ctrl_state_t gCtrlState = {
    .error = false
 };
 
+static fan_level_t convertFanLevel(uint8_t rawFanLevel)
+{
+   // HMI/IR protocol: 0=auto, 1=level1, 2=level2, 3=level3
+   // Enum: AUTO=1, 1=2, 2=3, 3=4
+   switch(rawFanLevel)
+   {
+      case 0: return FAN_LEVEL_AUTO;
+      case 1: return FAN_LEVEL_1;
+      case 2: return FAN_LEVEL_2;
+      case 3: return FAN_LEVEL_3;
+      default: return FAN_LEVEL_AUTO;
+   }
+}
+
 static void uartCtrlDataCb(uint8_t type, float temp, uint8_t mode, uint8_t fanLevel, uint8_t setTemp)
 {
    gCtrlState.airTemp = temp;
    gCtrlState.mode = (op_mode_t)mode;
-   gCtrlState.fanLevel = (fan_level_t)fanLevel;
+   gCtrlState.fanLevel = convertFanLevel(fanLevel);
    gCtrlState.setTemp = setTemp;
    gProcessState = true;
 }

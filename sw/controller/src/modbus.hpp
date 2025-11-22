@@ -20,5 +20,5 @@ class Modbus {
       {
       }
       void handle(void);
-      void sendFrame(op_mode_t mode, fan_level_t level, uint8_t setTemp, float airTemp);
+      void sendFrame(op_mode_t mode, fan_level_t level, uint8_t setTemp, float airTemp, bool swing = false);
 };
