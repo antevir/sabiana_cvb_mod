@@ -28,7 +28,7 @@
 #define HMI_TX_GPIO        21
 
 
-#define TEMP_INTERVAL_MS 500
+#define TEMP_INTERVAL_MS 2000
 
 #define PRINT_TEMP 1
 #define PRINT_STATE 0
@@ -220,6 +220,10 @@ static void processFanMode()
 }
 
 void setup() {
+   // Power optimizations
+   setCpuFrequencyMhz(80);  // Reduce from 240MHz to 80MHz
+   btStop();  // Ensure Bluetooth is disabled - saves power
+
    gSettings.init();
    
 #if ARDUINO_USB_CDC_ON_BOOT
@@ -250,6 +254,7 @@ void setup() {
    String ssid = gSettings.getSsid();
    String psk = gSettings.getPsk();
    WiFi.begin(ssid, psk);
+   WiFi.setSleep(WIFI_PS_MIN_MODEM);  // Enable WiFi modem sleep - saves ~50mA
    /*if (WiFi.waitForConnectResult() != WL_CONNECTED) {
    Serial.println("WiFiConnection Failed");
    } else {
@@ -359,4 +364,6 @@ void loop() {
             break;
       }
    }
+
+   delay(10);
 }
