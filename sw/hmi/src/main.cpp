@@ -176,6 +176,11 @@ static void tpCloseCb(void)
    gMainScreen.show();
 }
 
+static void manualSettingChangedCb(void)
+{
+   gTpUi.notifyManualOverride();
+}
+
 static void settingModified(void)
 {
    gSettingModTimeMs = millis();
@@ -265,9 +270,9 @@ void setup()
    Wire.begin(I2C_SDA_GPIO, I2C_SCL_GPIO);
    sht3x.begin();
 
-   gMainScreen.init(&gSettings, wifiPressed, programPressed);
+   gMainScreen.init(&gSettings, wifiPressed, programPressed, manualSettingChangedCb);
    gWifiScreen.init(&gSettings, wifiSetupDoneCb);
-   gTpUi.init(tpCloseCb);
+   gTpUi.init(tpCloseCb, &gSettings);
    gMainScreen.show();
    
    fanCom.init();
@@ -311,5 +316,6 @@ void loop()
    fanCom.handleRx();
    ArduinoOTA.handle();
    gMainScreen.update();
+   gTpUi.tick();
    handleBacklight();
 }

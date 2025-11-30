@@ -1,8 +1,12 @@
 #pragma once
 
+#include <Arduino.h>
 #include <lvgl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
+
+#include "settings.hpp"
 
 LV_IMAGE_DECLARE(img_blue_bg);
 LV_IMAGE_DECLARE(img_fan);
@@ -66,8 +70,16 @@ class TimeProgramUI {
 
       ProfileData profiles[2];
 
+      Settings *settings = nullptr;
+      int currentProfile = -1;
+      bool manualOverride = false;
+      uint32_t lastScheduleCheckMs = 0;
+
       static const char * const PROFILE_NAMES[2];
       static const char * const DAY_NAMES[WEEK_DAYS];
+      static constexpr int PROFILE_ACTIVE = 0;
+      static constexpr int PROFILE_INACTIVE = 1;
+      static constexpr uint32_t SCHEDULE_INTERVAL_MS = 30000;
 
       TimeProgramUI() {
          for (int i = 0; i < WEEK_DAYS; i++) {
@@ -115,12 +127,14 @@ class TimeProgramUI {
          }
          WeekRow *row = (WeekRow *)lv_event_get_user_data(e);
          TimeProgramUI &ui = instance();
-         int start = lv_slider_get_left_value(row->slider);
-         int end = lv_slider_get_value(row->slider);
+         int start = ui.clampHour(lv_slider_get_left_value(row->slider));
+         int end = ui.clampHour(lv_slider_get_value(row->slider));
          if (start > end) start = end;
          ui.dayStart[row->dayIndex] = start;
          ui.dayEnd[row->dayIndex] = end;
          ui.updateWeekLabel(row->dayIndex);
+         ui.storeDaySchedule(row->dayIndex);
+         ui.evaluateSchedule(true);
       }
 
       static void evtWeekBack(lv_event_t * e) {
@@ -145,10 +159,10 @@ class TimeProgramUI {
          ProfileScreen::TempCtx *ctx = (ProfileScreen::TempCtx *)lv_event_get_user_data(e);
          TimeProgramUI &ui = instance();
          ProfileData &data = ui.profiles[ctx->profile];
-         data.setTemp += ctx->delta;
-         if (data.setTemp < 10) data.setTemp = 10;
-         if (data.setTemp > 30) data.setTemp = 30;
+         data.setTemp = ui.clampTemp(data.setTemp + ctx->delta);
          ui.updateProfileTemp(ctx->profile);
+         ui.storeProfile(ctx->profile);
+         ui.syncProfileIfActive(ctx->profile);
       }
 
       static void evtFanSlider(lv_event_t * e) {
@@ -158,8 +172,10 @@ class TimeProgramUI {
          ProfileScreen::FanCtx *ctx = (ProfileScreen::FanCtx *)lv_event_get_user_data(e);
          TimeProgramUI &ui = instance();
          ProfileData &data = ui.profiles[ctx->profile];
-         data.fanLevel = lv_slider_get_value(lv_event_get_target_obj(e));
+         data.fanLevel = ui.clampFan(lv_slider_get_value(lv_event_get_target_obj(e)));
          ui.updateProfileFan(ctx->profile);
+         ui.storeProfile(ctx->profile);
+         ui.syncProfileIfActive(ctx->profile);
       }
 
       static void evtModeButton(lv_event_t * e) {
@@ -167,7 +183,7 @@ class TimeProgramUI {
             return;
          }
          ProfileScreen::ModeCtx *ctx = (ProfileScreen::ModeCtx *)lv_event_get_user_data(e);
-         instance().selectProfileMode(ctx->profile, ctx->mode);
+         instance().selectProfileMode(ctx->profile, ctx->mode, true);
       }
 
       void buildMenuScreen() {
@@ -280,8 +296,8 @@ class TimeProgramUI {
             lv_slider_set_range(slider, 0, SLOT_COUNT);
             lv_obj_set_size(slider, 180, 10);
             lv_obj_set_pos(slider, 70, 44 + i * 28);
-            lv_slider_set_left_value(slider, dayStart[i], LV_ANIM_OFF);
             lv_slider_set_value(slider, dayEnd[i], LV_ANIM_OFF);
+            lv_slider_set_left_value(slider, dayStart[i], LV_ANIM_OFF);
 
             lv_obj_t *lblRange = lv_label_create(weekScreen);
             lv_obj_add_style(lblRange, &styleText, 0);
@@ -497,7 +513,7 @@ class TimeProgramUI {
          setFanControlsVisible(profile, !off);
       }
 
-      void selectProfileMode(int profile, int mode) {
+      void selectProfileMode(int profile, int mode, bool persist = false) {
          if (mode < 0) mode = 0;
          if (mode > 2) mode = 2;
          profiles[profile].mode = mode;
@@ -510,6 +526,10 @@ class TimeProgramUI {
             lv_obj_add_state(profileScreens[profile].btnMode[mode], LV_STATE_CHECKED);
          }
          refreshProfileVisibility(profile);
+         if (persist) {
+            storeProfile(profile);
+            syncProfileIfActive(profile);
+         }
       }
 
       void loadProfile(int profile) {
@@ -517,7 +537,239 @@ class TimeProgramUI {
          lv_slider_set_value(screen.sliderFan, profiles[profile].fanLevel, LV_ANIM_OFF);
          updateProfileTemp(profile);
          updateProfileFan(profile);
-         selectProfileMode(profile, profiles[profile].mode);
+         selectProfileMode(profile, profiles[profile].mode, false);
+      }
+
+      void loadFromSettings() {
+         loadScheduleFromSettings();
+         loadProfilesFromSettings();
+         currentProfile = -1;
+      }
+
+      void loadScheduleFromSettings() {
+         if (!settings) {
+            return;
+         }
+         for (int i = 0; i < WEEK_DAYS; i++) {
+            int start = clampHour(getDayStartSetting(i));
+            int end = clampHour(getDayEndSetting(i));
+            if (start > end) {
+               start = end;
+            }
+            dayStart[i] = start;
+            dayEnd[i] = end;
+         }
+      }
+
+      void loadProfilesFromSettings() {
+         if (!settings) {
+            return;
+         }
+         profiles[PROFILE_ACTIVE].setTemp = clampTemp(settings->getTpActiveTemp());
+         profiles[PROFILE_ACTIVE].fanLevel = clampFan(settings->getTpActiveFan());
+         profiles[PROFILE_ACTIVE].mode = clampMode(settings->getTpActiveMode());
+
+         profiles[PROFILE_INACTIVE].setTemp = clampTemp(settings->getTpInactiveTemp());
+         profiles[PROFILE_INACTIVE].fanLevel = clampFan(settings->getTpInactiveFan());
+         profiles[PROFILE_INACTIVE].mode = clampMode(settings->getTpInactiveMode());
+      }
+
+      void storeProfile(int profile) {
+         profile = (profile == PROFILE_ACTIVE) ? PROFILE_ACTIVE : PROFILE_INACTIVE;
+         if (!settings) {
+            return;
+         }
+         ProfileData &data = profiles[profile];
+         if (profile == PROFILE_ACTIVE) {
+            settings->setTpActiveTemp(data.setTemp);
+            settings->setTpActiveFan(data.fanLevel);
+            settings->setTpActiveMode(data.mode);
+         } else {
+            settings->setTpInactiveTemp(data.setTemp);
+            settings->setTpInactiveFan(data.fanLevel);
+            settings->setTpInactiveMode(data.mode);
+         }
+      }
+
+      void storeDaySchedule(int dayIndex) {
+         if (!settings) {
+            return;
+         }
+         setDayStartSetting(dayIndex, dayStart[dayIndex]);
+         setDayEndSetting(dayIndex, dayEnd[dayIndex]);
+      }
+
+      int clampHour(int value) const {
+         if (value < 0) return 0;
+         if (value > SLOT_COUNT) return SLOT_COUNT;
+         return value;
+      }
+
+      int clampTemp(int value) const {
+         if (value < 10) return 10;
+         if (value > 30) return 30;
+         return value;
+      }
+
+      int clampFan(int value) const {
+         if (value < 0) return 0;
+         if (value > 3) return 3;
+         return value;
+      }
+
+      int clampMode(int value) const {
+         if (value < 0) return 0;
+         if (value > 2) return 2;
+         return value;
+      }
+
+      bool getLocalDayHour(int &dayIndex, int &hour) const {
+         time_t now = time(nullptr);
+         if (now < 60) {
+            return false;
+         }
+         struct tm timeinfo;
+         if (!localtime_r(&now, &timeinfo)) {
+            return false;
+         }
+         hour = timeinfo.tm_hour;
+         int wday = timeinfo.tm_wday; // 0 = Sunday
+         dayIndex = (wday + 6) % 7;   // Convert to 0 = Monday
+         return true;
+      }
+
+      bool isActiveHour(int dayIndex, int hour) const {
+         if (dayIndex < 0 || dayIndex >= WEEK_DAYS) {
+            return false;
+         }
+         int start = dayStart[dayIndex];
+         int end = dayEnd[dayIndex];
+         if (start == end) {
+            return false;
+         }
+         if (start <= end) {
+            return hour >= start && hour < end;
+         }
+         // Support wrap-around even if UI prevents it
+         return (hour >= start) || (hour < end);
+      }
+
+      void evaluateSchedule(bool force) {
+         if (!settings) {
+            return;
+         }
+         uint32_t nowMs = millis();
+         if (!force && lastScheduleCheckMs != 0) {
+            if (nowMs - lastScheduleCheckMs < SCHEDULE_INTERVAL_MS) {
+               return;
+            }
+         }
+         lastScheduleCheckMs = nowMs;
+
+         int dayIndex;
+         int hour;
+         if (!getLocalDayHour(dayIndex, hour)) {
+            return;
+         }
+
+         int desiredProfile = isActiveHour(dayIndex, hour) ? PROFILE_ACTIVE : PROFILE_INACTIVE;
+
+         if (currentProfile == -1) {
+            currentProfile = desiredProfile;
+            if (!manualOverride) {
+               applyProfile(desiredProfile, true);
+            }
+            return;
+         }
+
+         if (desiredProfile != currentProfile) {
+            currentProfile = desiredProfile;
+            applyProfile(desiredProfile, true);
+         }
+      }
+
+      void applyProfile(int profile, bool fromSchedule) {
+         if (!settings) {
+            return;
+         }
+         profile = profile == PROFILE_ACTIVE ? PROFILE_ACTIVE : PROFILE_INACTIVE;
+         ProfileData &data = profiles[profile];
+         settings->setMode(data.mode);
+         settings->setFanLevel(data.fanLevel);
+         settings->setSetTemp(data.setTemp);
+         if (fromSchedule) {
+            manualOverride = false;
+         }
+      }
+
+      void syncProfileIfActive(int profile) {
+         if (currentProfile == profile && !manualOverride) {
+            applyProfile(profile, false);
+         }
+      }
+
+      int getDayStartSetting(int dayIndex) const {
+         if (!settings) {
+            return dayStart[dayIndex];
+         }
+         switch (dayIndex) {
+            case 0: return settings->getTpMonStart();
+            case 1: return settings->getTpTueStart();
+            case 2: return settings->getTpWedStart();
+            case 3: return settings->getTpThuStart();
+            case 4: return settings->getTpFriStart();
+            case 5: return settings->getTpSatStart();
+            case 6: return settings->getTpSunStart();
+            default: return 0;
+         }
+      }
+
+      int getDayEndSetting(int dayIndex) const {
+         if (!settings) {
+            return dayEnd[dayIndex];
+         }
+         switch (dayIndex) {
+            case 0: return settings->getTpMonEnd();
+            case 1: return settings->getTpTueEnd();
+            case 2: return settings->getTpWedEnd();
+            case 3: return settings->getTpThuEnd();
+            case 4: return settings->getTpFriEnd();
+            case 5: return settings->getTpSatEnd();
+            case 6: return settings->getTpSunEnd();
+            default: return 0;
+         }
+      }
+
+      void setDayStartSetting(int dayIndex, int value) {
+         if (!settings) {
+            return;
+         }
+         switch (dayIndex) {
+            case 0: settings->setTpMonStart(value); break;
+            case 1: settings->setTpTueStart(value); break;
+            case 2: settings->setTpWedStart(value); break;
+            case 3: settings->setTpThuStart(value); break;
+            case 4: settings->setTpFriStart(value); break;
+            case 5: settings->setTpSatStart(value); break;
+            case 6: settings->setTpSunStart(value); break;
+            default: break;
+         }
+      }
+
+      void setDayEndSetting(int dayIndex, int value) {
+         if (!settings) {
+            return;
+         }
+         switch (dayIndex) {
+            case 0: settings->setTpMonEnd(value); break;
+            case 1: settings->setTpTueEnd(value); break;
+            case 2: settings->setTpWedEnd(value); break;
+            case 3: settings->setTpThuEnd(value); break;
+            case 4: settings->setTpFriEnd(value); break;
+            case 5: settings->setTpSatEnd(value); break;
+            case 6: settings->setTpSunEnd(value); break;
+            default: break;
+         }
       }
 
    public:
@@ -525,12 +777,15 @@ class TimeProgramUI {
          return instance();
       }
 
-      void init(tp_close_cb_t cb) {
+      void init(tp_close_cb_t cb, Settings *settings) {
          closeCb = cb;
+         this->settings = settings;
+         loadFromSettings();
          buildMenuScreen();
          buildWeekScreen();
          buildProfileScreen(0);
          buildProfileScreen(1);
+         evaluateSchedule(true);
       }
 
       void showMenu() {
@@ -544,6 +799,14 @@ class TimeProgramUI {
       void showProfile(int profile) {
          loadProfile(profile);
          lv_scr_load(profileScreens[profile].screen);
+      }
+
+      void tick() {
+         evaluateSchedule(false);
+      }
+
+      void notifyManualOverride() {
+         manualOverride = true;
       }
 };
 

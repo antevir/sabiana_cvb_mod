@@ -21,12 +21,14 @@ LV_IMAGE_DECLARE(img_wifi);
 
 typedef void (*wifi_pressed_t)(void);
 typedef void (*tp_pressed_t)(void);
+typedef void (*manual_changed_t)(void);
 
 class MainScreen {
    private:
       Settings *settings;
       wifi_pressed_t wifiPressedCb;
       tp_pressed_t tpPressedCb;
+      manual_changed_t manualChangedCb;
       const lv_font_t *pFontLarge = &amarath_40;
       int setTemp = 21;
       lv_obj_t *screen;
@@ -66,6 +68,7 @@ class MainScreen {
                main.setTemp += val;
                main.settings->setSetTemp(main.setTemp);
                main.updateSetTemp();
+               main.notifyManualChange();
             }
          }
       }
@@ -98,6 +101,12 @@ class MainScreen {
             imgFan
          };
          setObjectsVisible(objs, 3, visible);
+      }
+
+      void notifyManualChange() {
+         if (manualChangedCb != NULL) {
+            manualChangedCb();
+         }
       }
       
       void selectMode(int mode)
@@ -148,6 +157,7 @@ class MainScreen {
             int mode = (int)lv_event_get_user_data(e);
             main.selectMode(mode);
             main.settings->setMode(mode);
+            main.notifyManualChange();
          }
       }
       
@@ -155,9 +165,13 @@ class MainScreen {
       {
          lv_obj_t *slider = lv_event_get_target_obj(e);
          MainScreen &main = getInstance();
+         if (lv_event_get_indev(e) == NULL) {
+            return;
+         }
          int level = lv_slider_get_value(slider);
          main.setFanLevel(level);
          main.settings->setFanLevel(level);
+         main.notifyManualChange();
       }
       
       static void evtWifi(lv_event_t * e)
@@ -176,7 +190,7 @@ class MainScreen {
       
       
    public:
-      void init(Settings *settings, wifi_pressed_t wifiPressedCb, tp_pressed_t tpPressedCb)
+      void init(Settings *settings, wifi_pressed_t wifiPressedCb, tp_pressed_t tpPressedCb, manual_changed_t manualChangedCb)
       {
          static lv_style_t styleSetTemp;
          static lv_style_t styleSetTempShadow;
@@ -191,6 +205,7 @@ class MainScreen {
          this->settings = settings;
          this->wifiPressedCb = wifiPressedCb;
          this->tpPressedCb = tpPressedCb;
+         this->manualChangedCb = manualChangedCb;
          setTemp = settings->getSetTemp();
          
          screen = lv_obj_create(NULL);
