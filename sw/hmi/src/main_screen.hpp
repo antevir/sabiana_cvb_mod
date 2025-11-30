@@ -20,11 +20,13 @@ LV_IMAGE_DECLARE(img_wifi);
 #define MODE_Y 170
 
 typedef void (*wifi_pressed_t)(void);
+typedef void (*tp_pressed_t)(void);
 
 class MainScreen {
    private:
       Settings *settings;
       wifi_pressed_t wifiPressedCb;
+      tp_pressed_t tpPressedCb;
       const lv_font_t *pFontLarge = &amarath_40;
       int setTemp = 21;
       lv_obj_t *screen;
@@ -163,14 +165,23 @@ class MainScreen {
          MainScreen &main = getInstance();
          main.wifiPressedCb();
       }
+
+      static void evtTimeProgram(lv_event_t * e)
+      {
+         MainScreen &main = getInstance();
+         if (main.tpPressedCb != NULL) {
+            main.tpPressedCb();
+         }
+      }
       
       
    public:
-      void init(Settings *settings, wifi_pressed_t wifiPressedCb)
+      void init(Settings *settings, wifi_pressed_t wifiPressedCb, tp_pressed_t tpPressedCb)
       {
          static lv_style_t styleSetTemp;
          static lv_style_t styleSetTempShadow;
          static lv_style_t styleText;
+         static lv_style_t styleTopText;
          static lv_style_t styleBtn;
          static lv_style_t styleBtnSel;
          static lv_style_t styleWifiBtn;
@@ -179,6 +190,7 @@ class MainScreen {
          
          this->settings = settings;
          this->wifiPressedCb = wifiPressedCb;
+         this->tpPressedCb = tpPressedCb;
          setTemp = settings->getSetTemp();
          
          screen = lv_obj_create(NULL);
@@ -194,15 +206,18 @@ class MainScreen {
          lv_style_init(&styleSetTempShadow);
          lv_style_init(&styleSetTemp);
          lv_style_init(&styleText);
+         lv_style_init(&styleTopText);
          lv_style_init(&styleBtn);
          lv_style_init(&styleWifiBtn);
          lv_style_set_text_font(&styleSetTempShadow, pFontLarge);
          lv_style_set_text_font(&styleSetTemp, pFontLarge);
          lv_style_set_text_font(&styleText,  &lv_font_montserrat_20);
+         lv_style_set_text_font(&styleTopText, &lv_font_montserrat_18);
          lv_style_set_text_font(&styleBtn,  &lv_font_montserrat_20);
          lv_style_set_text_color(&styleSetTempShadow, lv_color_hex(0x333333));
          lv_style_set_text_color(&styleSetTemp, lv_color_hex(0x888888));
          lv_style_set_text_color(&styleText, lv_color_hex(0x888888));
+         lv_style_set_text_color(&styleTopText, lv_color_hex(0x888888));
          lv_style_set_text_color(&styleBtn, lv_color_hex(0x888888));
          lv_style_set_bg_color(&styleBtn, lv_color_hex(0x333388));
          lv_style_set_pad_all(&styleBtn, 0);
@@ -238,28 +253,39 @@ class MainScreen {
          updateSetTemp();
          lv_obj_set_pos(lblSetTempShadow, 103, SET_TEMP_Y + 3);
          lv_obj_set_pos(lblSetTemp, 100, SET_TEMP_Y);
-         lv_obj_set_pos(lblTime, MARGIN_X + 30, 4);
-         lv_obj_set_pos(lblAirTemp, 210, 4);
-         lv_obj_set_pos(lblHWTemp, 110, 4);
+         lv_obj_set_pos(lblTime, MARGIN_X + 65, 4);
+         lv_obj_set_pos(lblHWTemp, 150, 4);
+         lv_obj_set_pos(lblAirTemp, 228, 4);
          
          lv_obj_add_style(lblSetTempShadow, &styleSetTempShadow, 0);
          lv_obj_add_style(lblSetTemp, &styleSetTemp, 0);
-         lv_obj_add_style(lblTime, &styleText, 0);
-         lv_obj_add_style(lblAirTemp, &styleText, 0);
-         lv_obj_add_style(lblHWTemp, &styleText, 0);
+         lv_obj_add_style(lblTime, &styleTopText, 0);
+         lv_obj_add_style(lblAirTemp, &styleTopText, 0);
+         lv_obj_add_style(lblHWTemp, &styleTopText, 0);
          
 
-         lv_obj_t *btnWifi = lv_btn_create(screen);
-         lv_obj_set_pos(btnWifi, MARGIN_X-2, 3);
-         lv_obj_set_size(btnWifi, 26, 26);
-         lv_obj_add_style(btnWifi, &styleWifiBtn, 0);
-         lv_obj_add_event_cb(btnWifi, evtWifi, LV_EVENT_CLICKED, NULL);
-         imgWifi = lv_image_create(btnWifi);
-         lv_image_set_src(imgWifi, &img_wifi);
-         lv_obj_center(imgWifi);
-         imgNoWifi = lv_image_create(btnWifi);
-         lv_image_set_src(imgNoWifi, &img_no_wifi);
-         lv_obj_center(imgNoWifi);
+        lv_obj_t *btnWifi = lv_btn_create(screen);
+        lv_obj_set_pos(btnWifi, MARGIN_X-2, 3);
+        lv_obj_set_size(btnWifi, 26, 26);
+        lv_obj_add_style(btnWifi, &styleWifiBtn, 0);
+        lv_obj_add_event_cb(btnWifi, evtWifi, LV_EVENT_CLICKED, NULL);
+        imgWifi = lv_image_create(btnWifi);
+        lv_image_set_src(imgWifi, &img_wifi);
+        lv_obj_center(imgWifi);
+        imgNoWifi = lv_image_create(btnWifi);
+        lv_image_set_src(imgNoWifi, &img_no_wifi);
+        lv_obj_center(imgNoWifi);
+
+        lv_obj_t *btnTp = lv_btn_create(screen);
+        lv_obj_set_pos(btnTp, MARGIN_X + 32, 3);
+        lv_obj_set_size(btnTp, 26, 26);
+        lv_obj_add_style(btnTp, &styleWifiBtn, 0);
+        lv_obj_add_event_cb(btnTp, evtTimeProgram, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *lblTp = lv_label_create(btnTp);
+        lv_label_set_text(lblTp, LV_SYMBOL_SETTINGS);
+        lv_obj_set_style_text_color(lblTp, lv_color_hex(0x888888), 0);
+        lv_obj_set_style_text_font(lblTp, &lv_font_montserrat_18, 0);
+        lv_obj_center(lblTp);
          
          lv_obj_t * lblDecTemp; 
          btnDecTemp = lv_btn_create(screen);

@@ -12,6 +12,7 @@
 #include "wifi_screen.hpp"
 #include "settings.hpp"
 #include "uart_com.hpp"
+#include "time_program_screen.hpp"
 
 #define XPT2046_IRQ 36
 #define XPT2046_MOSI 32
@@ -62,6 +63,7 @@ bool gSendState = true;
 uint32_t gSettingModTimeMs = 0;
 MainScreen& gMainScreen = MainScreen::getInstance();
 WifiSetupScreen& gWifiScreen = WifiSetupScreen::getInstance();
+TimeProgramUI& gTpUi = TimeProgramUI::getInstance();
 Settings& gSettings = Settings::getInstance();
 UartCom fanCom(Serial, &uartComCallbacks);
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
@@ -153,6 +155,11 @@ static void wifiPressed(void)
    gWifiScreen.show();
 }
 
+static void programPressed(void)
+{
+   gTpUi.showMenu();
+}
+
 static void wifiSetupDoneCb(bool store)
 {
    if (store) {
@@ -161,6 +168,11 @@ static void wifiSetupDoneCb(bool store)
       WiFi.begin(ssid, psk);
       fanCom.sendWifiConfig(ssid, psk);
    }
+   gMainScreen.show();
+}
+
+static void tpCloseCb(void)
+{
    gMainScreen.show();
 }
 
@@ -253,8 +265,9 @@ void setup()
    Wire.begin(I2C_SDA_GPIO, I2C_SCL_GPIO);
    sht3x.begin();
 
-   gMainScreen.init(&gSettings, wifiPressed);
+   gMainScreen.init(&gSettings, wifiPressed, programPressed);
    gWifiScreen.init(&gSettings, wifiSetupDoneCb);
+   gTpUi.init(tpCloseCb);
    gMainScreen.show();
    
    fanCom.init();
