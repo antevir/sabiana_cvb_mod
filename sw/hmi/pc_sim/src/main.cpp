@@ -5,6 +5,7 @@
 #include <lvgl.h>
 #include "settings.hpp"
 #include "main_screen.hpp"
+#include "fan_cycle_screen.hpp"
 
 static constexpr int kWidth = 320;
 static constexpr int kHeight = 240;
@@ -78,9 +79,18 @@ static bool write_bmp(const char *path, const uint16_t *rgb565, int w, int h)
 
 static void noop(void) {}
 
+static void render_frames(void)
+{
+   for (int i = 0; i < 8; ++i) {
+      s_tick_ms += 33;
+      lv_timer_handler();
+   }
+}
+
 int main(int argc, char **argv)
 {
    const char *out_path = (argc > 1) ? argv[1] : "main_screen.bmp";
+   const char *which = (argc > 2) ? argv[2] : "main";
 
    lv_init();
    lv_tick_set_cb(tick_cb);
@@ -92,23 +102,30 @@ int main(int argc, char **argv)
                           LV_DISPLAY_RENDER_MODE_FULL);
 
    Settings settings;
-   MainScreen &ui = MainScreen::getInstance();
-   ui.init(&settings, noop, noop, noop);
-   ui.setAirTemp(22.4f);
-   ui.setHWTemp(38.0f);
-   ui.show();
-   ui.update();
-
-   for (int i = 0; i < 8; ++i) {
-      s_tick_ms += 33;
-      lv_timer_handler();
+   if (strcmp(which, "fan_cycle") == 0) {
+      settings.setFanCycleEn(1);
+      settings.setFanCycleFan(1);
+      settings.setFanCyclePeriod(60);
+      settings.setFanCycleDur(5);
+      FanCycleScreen &ui = FanCycleScreen::getInstance();
+      ui.init(&settings, noop);
+      ui.show();
+   } else {
+      MainScreen &ui = MainScreen::getInstance();
+      ui.init(&settings, noop, noop, noop);
+      ui.setAirTemp(22.4f);
+      ui.setHWTemp(38.0f);
+      ui.show();
+      ui.update();
    }
+
+   render_frames();
 
    if (!write_bmp(out_path, reinterpret_cast<const uint16_t *>(s_draw_buf), kWidth, kHeight)) {
       fprintf(stderr, "Failed to write %s\n", out_path);
       return 1;
    }
 
-   printf("Wrote %s (%dx%d)\n", out_path, kWidth, kHeight);
+   printf("Wrote %s (%dx%d) screen=%s\n", out_path, kWidth, kHeight, which);
    return 0;
 }

@@ -13,6 +13,7 @@
 #include "settings.hpp"
 #include "uart_com.hpp"
 #include "time_program_screen.hpp"
+#include "fan_cycle.hpp"
 
 #define XPT2046_IRQ 36
 #define XPT2046_MOSI 32
@@ -64,6 +65,7 @@ uint32_t gSettingModTimeMs = 0;
 MainScreen& gMainScreen = MainScreen::getInstance();
 WifiSetupScreen& gWifiScreen = WifiSetupScreen::getInstance();
 TimeProgramUI& gTpUi = TimeProgramUI::getInstance();
+FanCycle gFanCycle;
 Settings& gSettings = Settings::getInstance();
 UartCom fanCom(Serial, &uartComCallbacks);
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
@@ -273,6 +275,7 @@ void setup()
    gMainScreen.init(&gSettings, wifiPressed, programPressed, manualSettingChangedCb);
    gWifiScreen.init(&gSettings, wifiSetupDoneCb);
    gTpUi.init(tpCloseCb, &gSettings);
+   gFanCycle.init(&gSettings);
    gMainScreen.show();
    
    fanCom.init();
@@ -307,15 +310,24 @@ void loop()
       gSettings.store();
       gSettingModTimeMs = 0;
    }
+   gTpUi.tick();
+   if (gFanCycle.tick(gTpUi.isActivePeriod(), gSettings.getMode(), gSettings.getFanLevel(),
+                      airTemp, gSettings.getSetTemp())) {
+      gSendState = true;
+   }
    if (gSendState) {
       gSendState = false;
-      fanCom.sendState(PKT_TYPE_HMI_STATE, airTemp, gSettings.getMode(),
-      gSettings.getFanLevel(), gSettings.getSetTemp());
+      int mode = gSettings.getMode();
+      int fanLevel = gSettings.getFanLevel();
+      if (gFanCycle.overrideActive()) {
+         mode = gFanCycle.effectiveMode();
+         fanLevel = gFanCycle.effectiveFan();
+      }
+      fanCom.sendState(PKT_TYPE_HMI_STATE, airTemp, mode, fanLevel, gSettings.getSetTemp());
    }
    
    fanCom.handleRx();
    ArduinoOTA.handle();
    gMainScreen.update();
-   gTpUi.tick();
    handleBacklight();
 }

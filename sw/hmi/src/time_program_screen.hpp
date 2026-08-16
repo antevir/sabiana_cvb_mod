@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "settings.hpp"
+#include "fan_cycle_screen.hpp"
 
 LV_IMAGE_DECLARE(img_blue_bg);
 LV_IMAGE_DECLARE(img_fan);
@@ -119,6 +120,13 @@ class TimeProgramUI {
          }
          intptr_t profile = (intptr_t)lv_event_get_user_data(e);
          instance().showProfile((int)profile);
+      }
+
+      static void evtMenuOpenFanCycle(lv_event_t * e) {
+         if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+            return;
+         }
+         FanCycleScreen::getInstance().show();
       }
 
       static void evtWeekSlider(lv_event_t * e) {
@@ -235,9 +243,10 @@ class TimeProgramUI {
             lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, (void *)data);
          };
 
-         addButton("Week schedule", 60, evtMenuOpenWeek);
-         addButton("Active settings", 110, evtMenuOpenProfile, 0);
-         addButton("Inactive settings", 160, evtMenuOpenProfile, 1);
+         addButton("Week schedule", 50, evtMenuOpenWeek);
+         addButton("Active settings", 96, evtMenuOpenProfile, 0);
+         addButton("Inactive settings", 142, evtMenuOpenProfile, 1);
+         addButton("Fan cycle", 188, evtMenuOpenFanCycle);
       }
 
       void buildWeekScreen() {
@@ -785,6 +794,9 @@ class TimeProgramUI {
          buildWeekScreen();
          buildProfileScreen(0);
          buildProfileScreen(1);
+         FanCycleScreen::getInstance().init(settings, []() {
+            instance().showMenu();
+         });
          evaluateSchedule(true);
       }
 
@@ -803,6 +815,15 @@ class TimeProgramUI {
 
       void tick() {
          evaluateSchedule(false);
+      }
+
+      bool isActivePeriod() const {
+         int dayIndex;
+         int hour;
+         if (!getLocalDayHour(dayIndex, hour)) {
+            return false;
+         }
+         return isActiveHour(dayIndex, hour);
       }
 
       void notifyManualOverride() {

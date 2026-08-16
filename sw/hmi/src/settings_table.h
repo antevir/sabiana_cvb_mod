@@ -26,4 +26,8 @@
    X(int,     2,        tpActiveMode,   TpActiveMode) \
    X(int,     18,       tpInactiveTemp, TpInactiveTemp) \
    X(int,     0,        tpInactiveFan,  TpInactiveFan) \
-   X(int,     0,        tpInactiveMode, TpInactiveMode)
+   X(int,     0,        tpInactiveMode, TpInactiveMode) \
+   X(int,     0,        fanCycleEn,     FanCycleEn) \
+   X(int,     1,        fanCycleFan,    FanCycleFan) \
+   X(int,     60,       fanCyclePeriod, FanCyclePeriod) \
+   X(int,     5,        fanCycleDur,    FanCycleDur)
