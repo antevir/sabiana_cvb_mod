@@ -3,3 +3,9 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+pc_sim/build/
+pc_sim/*.exe
+pc_sim/*.bmp
+pc_sim/*.png
+pc_sim/*.pdb
+pc_sim/*.ilk

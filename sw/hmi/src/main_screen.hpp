@@ -7,17 +7,32 @@
 #include "esp_sntp.h"
 #include "settings.hpp"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 LV_FONT_DECLARE(amarath_40);
 LV_IMAGE_DECLARE(img_blue_bg);
 LV_IMAGE_DECLARE(img_fan);
 LV_IMAGE_DECLARE(img_heat);
 LV_IMAGE_DECLARE(img_no_wifi);
 LV_IMAGE_DECLARE(img_wifi);
+#ifdef __cplusplus
+}
+#endif
 
 #define MARGIN_X 20
-#define SET_TEMP_Y 95
-#define FAN_LEVEL_Y 40
-#define MODE_Y 170
+#define SCREEN_W 320
+#define SCREEN_H 240
+#define BOTTOM_MARGIN 14
+#define FAN_LEVEL_Y 60
+#define SET_TEMP_Y 108
+#define MODE_Y (SCREEN_H - 50 - BOTTOM_MARGIN)
+#define TOP_AIR_Y 3
+#define TOP_HW_Y 24
+#define TOP_TEMP_LABEL_W 40
+#define TOP_TEMP_VALUE_W 78
+#define TOP_TEMP_GAP 4
+#define TOP_TEMP_TITLE_X (SCREEN_W - MARGIN_X - TOP_TEMP_VALUE_W - TOP_TEMP_GAP - TOP_TEMP_LABEL_W)
 
 typedef void (*wifi_pressed_t)(void);
 typedef void (*tp_pressed_t)(void);
@@ -37,7 +52,9 @@ class MainScreen {
       lv_obj_t *btnIncTemp;
       lv_obj_t *btnDecTemp;
       lv_obj_t *lblTime;
+      lv_obj_t *lblAirName;
       lv_obj_t *lblAirTemp;
+      lv_obj_t *lblHWName;
       lv_obj_t *lblHWTemp;
       lv_obj_t *btnModeHeat;
       lv_obj_t *btnModeFan;
@@ -165,9 +182,6 @@ class MainScreen {
       {
          lv_obj_t *slider = lv_event_get_target_obj(e);
          MainScreen &main = getInstance();
-         if (lv_event_get_indev(e) == NULL) {
-            return;
-         }
          int level = lv_slider_get_value(slider);
          main.setFanLevel(level);
          main.settings->setFanLevel(level);
@@ -262,21 +276,28 @@ class MainScreen {
          lblSetTempShadow = lv_label_create(screen);
          lblSetTemp = lv_label_create(screen);
          lblTime = lv_label_create(screen);
+         lblAirName = lv_label_create(screen);
          lblAirTemp = lv_label_create(screen);
+         lblHWName = lv_label_create(screen);
          lblHWTemp = lv_label_create(screen);
+
+         lv_obj_add_style(lblSetTempShadow, &styleSetTempShadow, 0);
+         lv_obj_add_style(lblSetTemp, &styleSetTemp, 0);
+         lv_obj_add_style(lblTime, &styleTopText, 0);
+         lv_obj_add_style(lblAirName, &styleTopText, 0);
+         lv_obj_add_style(lblAirTemp, &styleTopText, 0);
+         lv_obj_add_style(lblHWName, &styleTopText, 0);
+         lv_obj_add_style(lblHWTemp, &styleTopText, 0);
          
          updateSetTemp();
          lv_obj_set_pos(lblSetTempShadow, 103, SET_TEMP_Y + 3);
          lv_obj_set_pos(lblSetTemp, 100, SET_TEMP_Y);
          lv_obj_set_pos(lblTime, MARGIN_X + 65, 4);
-         lv_obj_set_pos(lblHWTemp, 150, 4);
-         lv_obj_set_pos(lblAirTemp, 228, 4);
-         
-         lv_obj_add_style(lblSetTempShadow, &styleSetTempShadow, 0);
-         lv_obj_add_style(lblSetTemp, &styleSetTemp, 0);
-         lv_obj_add_style(lblTime, &styleTopText, 0);
-         lv_obj_add_style(lblAirTemp, &styleTopText, 0);
-         lv_obj_add_style(lblHWTemp, &styleTopText, 0);
+
+         lv_label_set_text(lblAirName, "Air:");
+         lv_label_set_text(lblHWName, "HW:");
+         lv_obj_set_pos(lblAirName, TOP_TEMP_TITLE_X, TOP_AIR_Y);
+         lv_obj_set_pos(lblHWName, TOP_TEMP_TITLE_X, TOP_HW_Y);
          
 
         lv_obj_t *btnWifi = lv_btn_create(screen);
@@ -389,24 +410,30 @@ class MainScreen {
          return instance;
       }
       
+      void placeTopTempValue(lv_obj_t *lbl, int y) {
+         lv_obj_align(lbl, LV_ALIGN_TOP_RIGHT, -MARGIN_X, y);
+      }
+
       void setAirTemp(float airTemp) {
          char buffer[16];
          if (isnan(airTemp)) {
-            snprintf(buffer, sizeof(buffer), "Air: -");
+            snprintf(buffer, sizeof(buffer), "-");
          } else {
-            snprintf(buffer, sizeof(buffer), "Air: %.1f°C", airTemp);
+            snprintf(buffer, sizeof(buffer), "%.1f°C", airTemp);
          }
          lv_label_set_text(lblAirTemp, buffer);
+         placeTopTempValue(lblAirTemp, TOP_AIR_Y);
       }
       
       void setHWTemp(float hwTemp) {
          char buffer[16];
          if (isnan(hwTemp)) {
-            snprintf(buffer, sizeof(buffer), "HW: -");
+            snprintf(buffer, sizeof(buffer), "-");
          } else {
-            snprintf(buffer, sizeof(buffer), "HW: %d°C", (int)hwTemp);
+            snprintf(buffer, sizeof(buffer), "%d°C", (int)hwTemp);
          }
          lv_label_set_text(lblHWTemp, buffer);
+         placeTopTempValue(lblHWTemp, TOP_HW_Y);
       }
       
       void update(void)
