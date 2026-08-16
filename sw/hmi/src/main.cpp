@@ -204,21 +204,14 @@ void setup()
    
    ArduinoOTA
    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH) {
-         type = "sketch";
-      } else {
-         type = "filesystem";
-      }
-      
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
+      WiFi.setSleep(false);
+      setCpuFrequencyMhz(240);
+      disableCore0WDT();
+      disableCore1WDT();
+      Serial.println("Start updating");
    })
    .onEnd([]() {
       Serial.println("\nEnd");
-   })
-   .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
    })
    .onError([](ota_error_t error) {
       Serial.printf("Error[%u]: ", error);
@@ -234,7 +227,7 @@ void setup()
          Serial.println("End Failed");
       }
    });
-   
+   ArduinoOTA.setTimeout(10000);
    ArduinoOTA.begin();
    
    Log.addPrintStream(std::make_shared<TelnetSerialStream>(telnetSerialStream));
@@ -293,6 +286,7 @@ void loop()
    static uint32_t lastTempTimeMs = 0;
    static float airTemp = NAN;
    
+   ArduinoOTA.handle();
    lv_tick_inc(millis() - lastTick);
    lastTick = millis();
    lv_timer_handler();
@@ -327,7 +321,6 @@ void loop()
    }
    
    fanCom.handleRx();
-   ArduinoOTA.handle();
    gMainScreen.update();
    handleBacklight();
 }
