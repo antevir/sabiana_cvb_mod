@@ -11,6 +11,7 @@
 #include "modbus.hpp"
 #include "uart_com.hpp"
 #include "settings.hpp"
+#include "fan_cycle.hpp"
 
 #define UDP_PORT 15007
 
@@ -37,12 +38,15 @@ static void uartCtrlDataCb(uint8_t type, float temp, uint8_t mode, uint8_t fanLe
 static void uartCtrlDataTmoCb(void);
 static void uartStartupCb(void);
 static void uartWifiCfgCb(String ssid, String psk);
+static void uartFanCycleCfgCb(bool enabled, bool activePeriod, uint8_t fanLevel,
+                              uint16_t periodMinutes, uint16_t durationMinutes);
 
 static const uart_com_callbacks_t uartComCallbacks = {
    .startup = NULL,
    .ctrlData = uartCtrlDataCb,
    .ctrlDataTmo = uartCtrlDataTmoCb,
-   .wifiCfg = uartWifiCfgCb
+   .wifiCfg = uartWifiCfgCb,
+   .fanCycleCfg = uartFanCycleCfgCb
 };
 
 typedef struct {
@@ -67,6 +71,7 @@ TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 Settings& gSettings = Settings::getInstance();
 UartCom hmiCom(Serial, &uartComCallbacks);
 Modbus modbus(Serial1);
+FanCycle fanCycle;
 WiFiUDP udp;
 IPAddress multicastAddr = IPAddress(224,3,29,71);
 bool gProcessState = true;
@@ -108,6 +113,7 @@ static void uartCtrlDataCb(uint8_t type, float temp, uint8_t mode, uint8_t fanLe
 static void uartCtrlDataTmoCb(void)
 {
    gCtrlState.airTemp = NAN;
+   fanCycle.disable();
    gProcessState = true;
 }
 
@@ -116,6 +122,13 @@ static void uartWifiCfgCb(String ssid, String psk)
    gSettings.setSsid(ssid);
    gSettings.setPsk(psk);
    WiFi.begin(ssid, psk);
+}
+
+static void uartFanCycleCfgCb(bool enabled, bool activePeriod, uint8_t fanLevel,
+                              uint16_t periodMinutes, uint16_t durationMinutes)
+{
+   fanCycle.configure(enabled, activePeriod, fanLevel, periodMinutes, durationMinutes);
+   gProcessState = true;
 }
 
 void processTemp(void)
@@ -180,6 +193,12 @@ static void sendModbusFrame(op_mode_t mode)
    modbus.sendFrame(mode, gCtrlState.fanLevel, gCtrlState.setTemp, gCtrlState.airTemp);
 }
 
+static void sendFanCycleFrame()
+{
+   modbus.sendFrame(OP_MODE_FAN, convertFanLevel(fanCycle.getFanLevel()),
+                    gCtrlState.setTemp, gCtrlState.airTemp);
+}
+
 static void processHeatMode()
 {
    static bool heat = false;
@@ -187,6 +206,7 @@ static void processHeatMode()
    if (isnan(gCtrlState.airTemp) || isnan(gCtrlState.hwTemp)) {
       gCtrlState.error = true;
       leds.set(LED_STATE_RED);
+      fanCycle.stop();
       sendModbusFrame(OP_MODE_OFF);
       return;
    }
@@ -206,11 +226,19 @@ static void processHeatMode()
       heat = false;
    }
    
-   sendModbusFrame(heat ? OP_MODE_HEAT : OP_MODE_OFF);
+   if (heat) {
+      fanCycle.tick(true, false, millis());
+      sendModbusFrame(OP_MODE_HEAT);
+   } else if (fanCycle.tick(false, false, millis())) {
+      sendFanCycleFrame();
+   } else {
+      sendModbusFrame(OP_MODE_OFF);
+   }
 }
 
 static void processFanMode()
 {
+   fanCycle.tick(false, true, millis());
    gCtrlState.error = false;
    if (isnan(gCtrlState.airTemp)) {
       leds.set(LED_STATE_GREEN_RED);
@@ -350,8 +378,13 @@ void loop() {
       gProcessState = false;
       switch (gCtrlState.mode) {
          case OP_MODE_OFF:
-            leds.set(LED_STATE_OFF);
-            sendModbusFrame(OP_MODE_OFF);
+            if (fanCycle.tick(false, false, millis())) {
+               leds.set(LED_STATE_GREEN);
+               sendFanCycleFrame();
+            } else {
+               leds.set(LED_STATE_OFF);
+               sendModbusFrame(OP_MODE_OFF);
+            }
             break;
          case OP_MODE_HEAT:
             processHeatMode();

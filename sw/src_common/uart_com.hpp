@@ -6,6 +6,7 @@
 #define PKT_TYPE_HMI_STATE  3
 #define PKT_TYPE_FAN_STATE  4
 #define PKT_TYPE_IR_CTRL    5
+#define PKT_TYPE_FAN_CYCLE  6
 
 #define CTRL_DATA_TMO       10000
 
@@ -14,6 +15,8 @@ typedef struct {
    void (*ctrlData)(uint8_t type, float temp, uint8_t mode, uint8_t fanLevel, uint8_t setTemp);
    void (*ctrlDataTmo)(void);
    void (*wifiCfg)(String ssid, String psk);
+   void (*fanCycleCfg)(bool enabled, bool activePeriod, uint8_t fanLevel,
+                       uint16_t periodMinutes, uint16_t durationMinutes);
 } uart_com_callbacks_t;
 
 class UartCom {
@@ -75,6 +78,19 @@ class UartCom {
             pCallbacks->ctrlData(type, temp, payload[2], payload[3], payload[4]);
          }
       }
+
+      void parseFanCycleCfg(uint8_t *payload, size_t len) {
+         if (len != 7) {
+            Log.printf("Invalid fan cycle config length\n");
+            return;
+         }
+         uint16_t periodMinutes = payload[3] | (payload[4] << 8);
+         uint16_t durationMinutes = payload[5] | (payload[6] << 8);
+         if (pCallbacks->fanCycleCfg) {
+            pCallbacks->fanCycleCfg(payload[0] != 0, payload[1] != 0, payload[2],
+                                    periodMinutes, durationMinutes);
+         }
+      }
       
       void parsePacket(uint8_t *data, size_t len) {
          switch (data[TYPE_IDX]) {
@@ -88,6 +104,9 @@ class UartCom {
             case PKT_TYPE_HMI_STATE:
             case PKT_TYPE_IR_CTRL:
                parseCtrlData(data[TYPE_IDX], &data[PAYLOAD_IDX], data[LENGTH_IDX]);
+               break;
+            case PKT_TYPE_FAN_CYCLE:
+               parseFanCycleCfg(&data[PAYLOAD_IDX], data[LENGTH_IDX]);
                break;
             default:
                Log.printf("Received unknown packet type: %x\n", data[TYPE_IDX]);
@@ -165,6 +184,20 @@ class UartCom {
          memcpy(&buffer[0], ssid.c_str(), ssid.length() + 1);
          memcpy(&buffer[ssid.length() + 1], psk.c_str(), psk.length());
          sendPacket(PKT_TYPE_WIFI_CFG, &buffer[0], sizeof(buffer));
+      }
+
+      void sendFanCycleConfig(bool enabled, bool activePeriod, uint8_t fanLevel,
+                              uint16_t periodMinutes, uint16_t durationMinutes) {
+         uint8_t buffer[] = {
+            enabled ? (uint8_t)1 : (uint8_t)0,
+            activePeriod ? (uint8_t)1 : (uint8_t)0,
+            fanLevel,
+            (uint8_t)(periodMinutes & 0xff),
+            (uint8_t)((periodMinutes >> 8) & 0xff),
+            (uint8_t)(durationMinutes & 0xff),
+            (uint8_t)((durationMinutes >> 8) & 0xff)
+         };
+         sendPacket(PKT_TYPE_FAN_CYCLE, &buffer[0], sizeof(buffer));
       }
       
       void sendState(uint8_t type, float temp, uint8_t mode, uint8_t fanLevel, uint8_t setTemp) {

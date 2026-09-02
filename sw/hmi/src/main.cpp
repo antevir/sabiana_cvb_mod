@@ -13,7 +13,6 @@
 #include "settings.hpp"
 #include "uart_com.hpp"
 #include "time_program_screen.hpp"
-#include "fan_cycle.hpp"
 
 #define XPT2046_IRQ 36
 #define XPT2046_MOSI 32
@@ -51,7 +50,8 @@ static const uart_com_callbacks_t uartComCallbacks = {
    .startup = uartStartupCb,
    .ctrlData = uartCtrlDataCb,
    .ctrlDataTmo = uartCtrlDataTmoCb,
-   .wifiCfg = NULL
+   .wifiCfg = NULL,
+   .fanCycleCfg = NULL
 };
 
 SPIClass touchscreenSpi = SPIClass(VSPI);
@@ -65,7 +65,6 @@ uint32_t gSettingModTimeMs = 0;
 MainScreen& gMainScreen = MainScreen::getInstance();
 WifiSetupScreen& gWifiScreen = WifiSetupScreen::getInstance();
 TimeProgramUI& gTpUi = TimeProgramUI::getInstance();
-FanCycle gFanCycle;
 Settings& gSettings = Settings::getInstance();
 UartCom fanCom(Serial, &uartComCallbacks);
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
@@ -132,6 +131,7 @@ static void uartStartupCb(void)
    String ssid = gSettings.getSsid();
    String psk = gSettings.getPsk();
    fanCom.sendWifiConfig(ssid, psk);
+   gSendState = true;
 }
 
 void timeofdayCb(struct timeval *t)
@@ -268,7 +268,6 @@ void setup()
    gMainScreen.init(&gSettings, wifiPressed, programPressed, manualSettingChangedCb);
    gWifiScreen.init(&gSettings, wifiSetupDoneCb);
    gTpUi.init(tpCloseCb, &gSettings);
-   gFanCycle.init(&gSettings);
    gMainScreen.show();
    
    fanCom.init();
@@ -305,19 +304,13 @@ void loop()
       gSettingModTimeMs = 0;
    }
    gTpUi.tick();
-   if (gFanCycle.tick(gTpUi.isActivePeriod(), gSettings.getMode(), gSettings.getFanLevel(),
-                      airTemp, gSettings.getSetTemp())) {
-      gSendState = true;
-   }
    if (gSendState) {
       gSendState = false;
-      int mode = gSettings.getMode();
-      int fanLevel = gSettings.getFanLevel();
-      if (gFanCycle.overrideActive()) {
-         mode = gFanCycle.effectiveMode();
-         fanLevel = gFanCycle.effectiveFan();
-      }
-      fanCom.sendState(PKT_TYPE_HMI_STATE, airTemp, mode, fanLevel, gSettings.getSetTemp());
+      fanCom.sendFanCycleConfig(gSettings.getFanCycleEn() != 0, gTpUi.isActivePeriod(),
+                               gSettings.getFanCycleFan(), gSettings.getFanCyclePeriod(),
+                               gSettings.getFanCycleDur());
+      fanCom.sendState(PKT_TYPE_HMI_STATE, airTemp, gSettings.getMode(),
+                       gSettings.getFanLevel(), gSettings.getSetTemp());
    }
    
    fanCom.handleRx();
