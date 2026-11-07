@@ -276,6 +276,17 @@ void Ir::handle(void)
       Log.printf("Invalid IR chksum\r\n");
       return;
    }
+   bool anyData = false;
+   for (int i = 0; i < 11; i++) {
+      if (rxData[i] != 0) {
+         anyData = true;
+         break;
+      }
+   }
+   if (!anyData) {
+      Log.printf("Ignoring empty IR frame\r\n");
+      return;
+   }
 
    // Extract fields
    uint8_t modeCode = rxData[0] >> 4;
