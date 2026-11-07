@@ -114,9 +114,18 @@ static void touchpadRead( lv_indev_t * indev, lv_indev_data_t * data )
 static void uartCtrlDataCb(uint8_t type, float temp, uint8_t mode, uint8_t fanLevel, uint8_t setTemp)
 {
    gMainScreen.setHWTemp(temp);
-   if (type == PKT_TYPE_IR_CTRL) {
+   if (type != PKT_TYPE_IR_CTRL) {
+      return;
+   }
+   // OFF frames often carry temperature 0, and a decoded AUTO/COOL or fan nibble
+   // is outside the HMI ranges. Ignore those fields instead of wiping settings.
+   if (mode >= 0 && mode <= 2) {
       gSettings.setMode(mode);
+   }
+   if (fanLevel >= 0 && fanLevel <= 3) {
       gSettings.setFanLevel(fanLevel);
+   }
+   if (setTemp >= 10 && setTemp <= 30) {
       gSettings.setSetTemp(setTemp);
    }
 }

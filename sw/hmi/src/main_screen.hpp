@@ -128,6 +128,9 @@ class MainScreen {
       
       void selectMode(int mode)
       {
+         if (mode < 0 || mode > 2) {
+            mode = 0;
+         }
          lv_obj_t *modeBtns[] = {
             btnModeOff,
             btnModeFan,
@@ -151,6 +154,9 @@ class MainScreen {
             "Mid",
             "High"
          };
+         if (level < 0 || level > 3) {
+            level = 0;
+         }
 
          lv_label_set_text(lblFan, text[level]);
       }
@@ -467,10 +473,25 @@ class MainScreen {
 
       void reloadSettings(void)
       {
-         selectMode(settings->getMode());
-         setFanLevel(settings->getFanLevel());
-         lv_slider_set_value(slidFan, settings->getFanLevel(), LV_ANIM_OFF);
-         setTemp = settings->getSetTemp();
+         int mode = settings->getMode();
+         int fanLevel = settings->getFanLevel();
+         int temp = settings->getSetTemp();
+         if (mode < 0 || mode > 2) {
+            settings->setMode(0);
+            return;
+         }
+         if (fanLevel < 0 || fanLevel > 3) {
+            settings->setFanLevel(0);
+            return;
+         }
+         if (temp < 10 || temp > 30) {
+            settings->setSetTemp(21);
+            return;
+         }
+         selectMode(mode);
+         setFanLevel(fanLevel);
+         lv_slider_set_value(slidFan, fanLevel, LV_ANIM_OFF);
+         setTemp = temp;
          updateSetTemp();
       }
 };

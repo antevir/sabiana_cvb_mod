@@ -70,6 +70,9 @@ class Settings {
       #define DEFINE_SET_GET(TYPE, DEF_VAL, NAME, GETSET_NAME) \
           TYPE get##GETSET_NAME() { return this->NAME; } \
           void set##GETSET_NAME(TYPE NAME) { \
+              if (this->NAME == NAME) { \
+                 return; \
+              } \
               this->NAME = NAME; \
               notifyModified(); \
           }
