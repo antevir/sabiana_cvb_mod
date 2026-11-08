@@ -25,6 +25,15 @@ static uint32_t tick_cb(void)
    return s_tick_ms;
 }
 
+// Screenshot only. The panel backlight makes the same pixels look brighter,
+// so scale them here. A straight multiply keeps the hue: blue stays blue,
+// and anything already light (the gray text) clips to white.
+static uint8_t backlight(uint8_t channel)
+{
+   const int lifted = (int)channel * 22 / 10;
+   return (uint8_t)(lifted > 255 ? 255 : lifted);
+}
+
 static bool write_bmp(const char *path, const uint16_t *rgb565, int w, int h)
 {
    const int row_stride = (w * 3 + 3) & ~3;
@@ -63,9 +72,9 @@ static bool write_bmp(const char *path, const uint16_t *rgb565, int w, int h)
       memset(row, 0, (size_t)row_stride);
       for (int x = 0; x < w; ++x) {
          const uint16_t c = rgb565[y * w + x];
-         const uint8_t r = (uint8_t)(((c >> 11) & 0x1F) * 255 / 31);
-         const uint8_t g = (uint8_t)(((c >> 5) & 0x3F) * 255 / 63);
-         const uint8_t b = (uint8_t)((c & 0x1F) * 255 / 31);
+         const uint8_t r = backlight((uint8_t)(((c >> 11) & 0x1F) * 255 / 31));
+         const uint8_t g = backlight((uint8_t)(((c >> 5) & 0x3F) * 255 / 63));
+         const uint8_t b = backlight((uint8_t)((c & 0x1F) * 255 / 31));
          row[x * 3 + 0] = b;
          row[x * 3 + 1] = g;
          row[x * 3 + 2] = r;
