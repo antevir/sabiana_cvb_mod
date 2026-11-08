@@ -12,6 +12,7 @@
 #include "uart_com.hpp"
 #include "settings.hpp"
 #include "fan_cycle.hpp"
+#include "wifi_link.hpp"
 
 #define UDP_PORT 15007
 
@@ -121,7 +122,7 @@ static void uartWifiCfgCb(String ssid, String psk)
 {
    gSettings.setSsid(ssid);
    gSettings.setPsk(psk);
-   WiFi.begin(ssid, psk);
+   WifiLink::reconnect(ssid, psk);
 }
 
 static void uartFanCycleCfgCb(bool enabled, bool activePeriod, uint8_t fanLevel,
@@ -278,19 +279,9 @@ void setup() {
    leds.init();
    ir.init(irRxCommandCb);
    
-   WiFi.mode(WIFI_STA);
-   
-   String ssid = gSettings.getSsid();
-   String psk = gSettings.getPsk();
-   WiFi.begin(ssid, psk);
-   WiFi.setSleep(WIFI_PS_MIN_MODEM);  // Enable WiFi modem sleep - saves ~50mA
-   /*if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-   Serial.println("WiFiConnection Failed");
-   } else {
-   Serial.println("WiFiConnection Succeeded");
-   Serial.print("Local IP address: ");
-   Serial.println(WiFi.localIP());
-   }*/
+   WifiLink::start(gSettings.getSsid(), gSettings.getPsk());
+
+   ArduinoOTA.setHostname("FanCtrl");
    ArduinoOTA
    .onStart([]() {
       String type;
@@ -327,9 +318,6 @@ void setup() {
    
    Log.addPrintStream(std::make_shared<TelnetSerialStream>(telnetSerialStream));
    Log.begin();
-   MDNS.begin("FanCtrl");
-   
-   udp.beginMulticast(multicastAddr, UDP_PORT);
    
    hmiCom.init();
 }
@@ -342,6 +330,14 @@ void loop() {
       processTemp();
    }
    
+   WifiLink::loop();
+   if (WifiLink::takeConnected()) {
+      ArduinoOTA.end();
+      ArduinoOTA.begin();
+      udp.stop();
+      udp.beginMulticast(multicastAddr, UDP_PORT);
+   }
+
    modbus.handle();
    ir.handle();
    leds.handle();

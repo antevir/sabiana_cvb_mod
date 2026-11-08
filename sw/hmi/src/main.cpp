@@ -13,6 +13,7 @@
 #include "settings.hpp"
 #include "uart_com.hpp"
 #include "time_program_screen.hpp"
+#include "wifi_link.hpp"
 
 #define XPT2046_IRQ 36
 #define XPT2046_MOSI 32
@@ -176,7 +177,7 @@ static void wifiSetupDoneCb(bool store)
    if (store) {
       String ssid = gSettings.getSsid();
       String psk = gSettings.getPsk();
-      WiFi.begin(ssid, psk);
+      WifiLink::reconnect(ssid, psk);
       fanCom.sendWifiConfig(ssid, psk);
    }
    gMainScreen.show();
@@ -208,9 +209,9 @@ void setup()
    
    Serial1.begin(115200);
    
-   WiFi.begin(gSettings.getSsid(), gSettings.getPsk());
-   WiFi.setSleep(true);
+   WifiLink::start(gSettings.getSsid(), gSettings.getPsk());
    
+   ArduinoOTA.setHostname("FanHmi");
    ArduinoOTA
    .onStart([]() {
       WiFi.setSleep(false);
@@ -235,6 +236,9 @@ void setup()
       } else if (error == OTA_END_ERROR) {
          Serial.println("End Failed");
       }
+      if (WiFi.status() == WL_CONNECTED) {
+         WiFi.setSleep(WIFI_PS_MIN_MODEM);
+      }
    });
    ArduinoOTA.setTimeout(10000);
    ArduinoOTA.begin();
@@ -242,7 +246,6 @@ void setup()
    Log.addPrintStream(std::make_shared<TelnetSerialStream>(telnetSerialStream));
    Log.disableSerial(true);
    Log.begin();
-   MDNS.begin("FanHmi");
    
    timeofdayCb(NULL);
    sntp_set_time_sync_notification_cb(timeofdayCb);
@@ -294,6 +297,11 @@ void loop()
    static uint32_t lastTempTimeMs = 0;
    static float airTemp = NAN;
    
+   WifiLink::loop();
+   if (WifiLink::takeConnected()) {
+      ArduinoOTA.end();
+      ArduinoOTA.begin();
+   }
    ArduinoOTA.handle();
    lv_tick_inc(millis() - lastTick);
    lastTick = millis();
