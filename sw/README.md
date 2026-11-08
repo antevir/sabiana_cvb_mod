@@ -4,9 +4,15 @@ This dir contains the source code for the HMI and controller firmware. In order 
 
 ## HMI Panel Software
 
-The HMI panel uses a cheap ESP32 2.8" touch display like this:  
+The HMI panel uses a cheap ESP32 2.8" touch display like this:
 
 ![ESP32 Display](/images/esp32_display.jpg)
+
+The main screen:
+
+![Main screen](/images/hmi_main.png)
+
+The gear icon opens the time program: week schedule, active settings, inactive settings, and fan cycle. The Wi-Fi icon opens the network setup.
 
 The one I used was called Vegana ESP32, but they are available as different brands.
 
@@ -19,7 +25,7 @@ Open the `hmi.code-workspace` in vscode. When PlatformIO initialization is done,
 
 ## Controller Software
 
-The controller board uses a ESP32-C3 SuperMini board like this:
+The controller board uses an ESP32-C3 SuperMini board like this:
 
 ![ESP32-C3 SuperMini](/images/esp32_supermini.jpg)
 
